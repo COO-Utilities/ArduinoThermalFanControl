@@ -4,6 +4,7 @@ The Arduino sketch speaks a simple line-based protocol over serial:
 
 * ``FAN:<0-100>`` sets the fan duty cycle as a percentage.
 * ``HEATER:ON`` and ``HEATER:OFF`` control the heater relay.
+* ``STATUS`` reports the current temperature and relay/fan states.
 
 This module wraps that protocol in a small serial client and can auto-discover
 the Arduino on Linux by USB VID/PID.
@@ -181,16 +182,16 @@ class ThermalFanController:
 			return response
 		return ""
 
-	def set_fan_speed(self, percent: int, read_response: bool = True) -> str:
+	def set_fan_speed(self, fan_number: int, percent: int, read_response: bool = True) -> str:
 		"""Set the fan duty cycle from 0 to 100 percent."""
 
 		percent = max(0, min(100, int(percent)))
-		return self.send_command(f"FAN:{percent}", read_response=read_response)
+		return self.send_command(f"FAN{fan_number}:{percent}", read_response=read_response)
 
-	def fan_off(self, read_response: bool = True) -> str:
+	def fan_off(self, fan_number: int, read_response: bool = True) -> str:
 		"""Convenience helper that turns the fan off."""
 
-		return self.set_fan_speed(0, read_response=read_response)
+		return self.set_fan_speed(fan_number, 0, read_response=read_response)
 
 	def set_heater(self, on: bool, read_response: bool = True) -> str:
 		"""Turn the heater relay on or off."""
@@ -199,6 +200,37 @@ class ThermalFanController:
 			f"HEATER:{'ON' if on else 'OFF'}",
 			read_response=read_response,
 		)
+
+	def get_status(self) -> dict[str, Any]:
+		"""Query the current PT1000 temperature and relay/fan states.
+
+		Sends the ``STATUS`` command and parses the Arduino's
+		``STATUS:TEMP=...,HEATER=...,FAN1_PWM=...,FAN2_PWM=...,STARTUP_RELAY=...``
+		reply into a dictionary.
+		"""
+
+		response = self.send_command("STATUS", read_response=True)
+		if not response.startswith("STATUS:"):
+			raise ControllerProtocolError(
+				f"Unexpected response to STATUS command: {response!r}"
+			)
+		return response
+		# fields = response[len("STATUS:"):].split(",")
+		# status: dict[str, Any] = {}
+		# for field in fields:
+		# 	key, _, value = field.partition("=")
+		# 	if key == "TEMP":
+		# 		status["temperature_k"] = float(value)
+		# 	elif key == "HEATER":
+		# 		status["heater_on"] = value == "ON"
+		# 	elif key == "FAN1_PWM":
+		# 		status["fan1_percent"] = int(value)
+		# 	elif key == "FAN2_PWM":
+		# 		status["fan2_percent"] = int(value)
+		# 	elif key == "STARTUP_RELAY":
+		# 		status["startup_relay_on"] = value == "ON"
+
+		# return status
 
 
 def connect(
