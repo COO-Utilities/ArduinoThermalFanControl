@@ -5,6 +5,8 @@ The Arduino sketch speaks a simple line-based protocol over serial:
 * ``FAN:<0-100>`` sets the fan duty cycle as a percentage.
 * ``HEATER:ON`` and ``HEATER:OFF`` control the heater relay.
 * ``STATUS`` reports the current temperature and relay/fan states.
+* ``SHUTDOWN`` disables the startup relay until the temperature drops below
+  then rises above ``STARTUP_TEMP`` again.
 
 This module wraps that protocol in a small serial client and can auto-discover
 the Arduino on Linux by USB VID/PID.
@@ -200,6 +202,11 @@ class ThermalFanController:
 			f"HEATER:{'ON' if on else 'OFF'}",
 			read_response=read_response,
 		)
+
+	def shutdown(self, read_response: bool = True) -> str:
+		"""Disable the startup relay until the temperature drops below then rises above STARTUP_TEMP again."""
+
+		return self.send_command("SHUTDOWN", read_response=read_response)
 
 	def get_status(self) -> dict[str, Any]:
 		"""Query the current PT1000 temperature and relay/fan states.

@@ -31,6 +31,9 @@ int fan1Speed = 0;
 int fan2Speed = 0;
 bool heaterOn = false;
 bool startupRelayOn = false;
+// Set by SHUTDOWN; blocks the relay until temp drops below then rises above STARTUP_TEMP again
+bool startupShutdownLatched = false;
+bool startupHasCooled = false;
 float resistance = 0;
 
 #define PT1000_PIN A4
@@ -39,10 +42,15 @@ float resistance = 0;
 #define PT1000_BETA 03.85  // change in resistance per degree Kelvin
 #define PT1000_T0 273.15  // Reference temperature for the PT1000 thermistor (25°C in Kelvin)
 #define PT1000_REFVOLTAGE 4.5  // Reference voltage for the PT1000 voltage divider
+#define ADC_AVG_NUM 1000
 
 float getPT1000Temperature() {
-  int rawValue = analogRead(PT1000_PIN);
-  float voltage = (rawValue / 1023.0) * PT1000_REFVOLTAGE;
+  //average ADC_AVG_NUM readings to reduce noise
+  int rawValue = 0;
+  for (int i = 0; i < ADC_AVG_NUM; i++) {
+    rawValue += analogRead(PT1000_PIN);
+  }
+  float voltage = (((double)rawValue / (double)ADC_AVG_NUM) / 1023.0) * PT1000_REFVOLTAGE;
   resistance = (PT1000_RREF * voltage) / (PT1000_REFVOLTAGE - voltage);
   // float temperature = 1.0 / (1.0 / PT1000_T0 + (1.0 / PT1000_BETA) * log(resistance / PT1000_RREF)); //in Kelvin
   float temperature = (resistance - PT1000_R0) / PT1000_BETA + PT1000_T0; //in Kelvin
@@ -57,8 +65,26 @@ void readPT1000() {
 // Turns on the computer startup relay once the reject surface is warm enough
 void updateStartupRelay() {
   float temperature = getPT1000Temperature();
-  startupRelayOn = temperature > STARTUP_TEMP;
-  digitalWrite(RELAY_STARTUP_COMPUTER, startupRelayOn ? HIGH : LOW);
+
+  if (startupShutdownLatched) {
+    if (temperature <= STARTUP_TEMP) {
+      startupHasCooled = true;
+    }
+    if (startupHasCooled && temperature > STARTUP_TEMP) {
+      startupShutdownLatched = false;
+      startupHasCooled = false;
+    } else {
+      startupRelayOn = false;
+      digitalWrite(RELAY_STARTUP_COMPUTER, LOW);
+      return;
+    }
+  }
+
+  // only ever turn the startup relay on, let the computer issue a shutdown command
+  startupRelayOn = temperature > STARTUP_TEMP; 
+  if (startupRelayOn) {
+    digitalWrite(RELAY_STARTUP_COMPUTER, HIGH);
+  }
 }
 
 void printStatus() {
@@ -73,7 +99,9 @@ void printStatus() {
   Serial.print(",FAN2_PWM=");
   Serial.print(fan2Speed);
   Serial.print(",STARTUP_RELAY=");
-  Serial.println(startupRelayOn ? "ON" : "OFF");
+  Serial.print(startupRelayOn ? "ON" : "OFF");
+  Serial.print(",SHUTDOWN_LATCHED=");
+  Serial.println(startupShutdownLatched ? "ON" : "OFF");
 }
 
 void setup() {
@@ -99,15 +127,17 @@ void loop() {
   // Check watchdog timer
   if (millis() - lastCommandTime > WATCHDOG_TIMEOUT) {
     // Watchdog timeout - set safe state and soft reboot
-    fan1Pwm.pulse_perc(0);
-    fan2Pwm.pulse_perc(0);
-    digitalWrite(RELAY_HEATER_PIN1, LOW);
-    digitalWrite(RELAY_HEATER_PIN2, LOW);
-    digitalWrite(RELAY_FAN1_PIN, LOW);
-    digitalWrite(RELAY_FAN2_PIN, LOW);
-    Serial.println("WATCHDOG TIMEOUT - Soft reboot");
-    delay(100);
-    NVIC_SystemReset();
+    if (!startupShutdownLatched){
+      fan1Pwm.pulse_perc(0);
+      fan2Pwm.pulse_perc(0);
+      digitalWrite(RELAY_HEATER_PIN1, LOW);
+      digitalWrite(RELAY_HEATER_PIN2, LOW);
+      digitalWrite(RELAY_FAN1_PIN, LOW);
+      digitalWrite(RELAY_FAN2_PIN, LOW);
+      Serial.println("WATCHDOG TIMEOUT - Soft reboot");
+      delay(100);
+      NVIC_SystemReset();
+    }
   }
 
   if (millis() - lastStartupCheckTime > STARTUP_CHECK_INTERVAL) {
@@ -165,6 +195,13 @@ void loop() {
         digitalWrite(RELAY_HEATER_PIN2, LOW);
         Serial.println("HEATER OFF");
       }
+    }
+    else if (command == "SHUTDOWN") {
+      startupShutdownLatched = true;
+      startupHasCooled = false;
+      startupRelayOn = false;
+      digitalWrite(RELAY_STARTUP_COMPUTER, LOW);
+      Serial.println("SHUTDOWN");
     }
     else if (command == "STATUS") {
       updateStartupRelay();
