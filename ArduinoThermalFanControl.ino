@@ -31,19 +31,21 @@ int fan1Speed = 0;
 int fan2Speed = 0;
 bool heaterOn = false;
 bool startupRelayOn = false;
+float resistance = 0;
 
 #define PT1000_PIN A4
-#define PT1000_RREF 1333.0  // Reference resistor value for PT1000 voltage divider with the PT1000 forming the bottom part of the divider
-#define PT1000_BETA 3.85  // change in resistance per degree Kelvin
-#define PT1000_T0 298.15  // Reference temperature for the PT1000 thermistor (25°C in Kelvin)
-#define PT1000_REFVOLTAGE 5.0  // Reference voltage for the PT1000 voltage divider
+#define PT1000_RREF 1330.0  // Reference resistor value for PT1000 voltage divider with the PT1000 forming the bottom part of the divider
+#define PT1000_R0 1000.0
+#define PT1000_BETA 03.85  // change in resistance per degree Kelvin
+#define PT1000_T0 273.15  // Reference temperature for the PT1000 thermistor (25°C in Kelvin)
+#define PT1000_REFVOLTAGE 4.5  // Reference voltage for the PT1000 voltage divider
 
 float getPT1000Temperature() {
   int rawValue = analogRead(PT1000_PIN);
   float voltage = (rawValue / 1023.0) * PT1000_REFVOLTAGE;
-  float resistance = (PT1000_RREF * voltage) / (PT1000_REFVOLTAGE - voltage);
+  resistance = (PT1000_RREF * voltage) / (PT1000_REFVOLTAGE - voltage);
   // float temperature = 1.0 / (1.0 / PT1000_T0 + (1.0 / PT1000_BETA) * log(resistance / PT1000_RREF)); //in Kelvin
-  float temperature = (resistance - PT1000_RREF) / PT1000_BETA + PT1000_T0; //in Kelvin
+  float temperature = (resistance - PT1000_R0) / PT1000_BETA + PT1000_T0; //in Kelvin
   //TODO WIP
   return temperature;
 }
@@ -55,13 +57,15 @@ void readPT1000() {
 // Turns on the computer startup relay once the reject surface is warm enough
 void updateStartupRelay() {
   float temperature = getPT1000Temperature();
-  startupRelayOn = true;//temperature > STARTUP_TEMP;
+  startupRelayOn = temperature > STARTUP_TEMP;
   digitalWrite(RELAY_STARTUP_COMPUTER, startupRelayOn ? HIGH : LOW);
 }
 
 void printStatus() {
   Serial.print("STATUS:TEMP=");
   Serial.print(getPT1000Temperature());
+  Serial.print(",Resistance=");
+  Serial.print(resistance);
   Serial.print(",HEATER=");
   Serial.print(heaterOn ? "ON" : "OFF");
   Serial.print(",FAN1_PWM=");
@@ -115,10 +119,10 @@ void loop() {
     String command = Serial.readStringUntil('\n');
     command.trim();
     lastCommandTime = millis();  // Kick the watchdog
-    
+
     // Parse command format: "FAN:value" or "HEATER:state"
     // Example: "FAN:75" sets fan to 75%, "HEATER:ON" or "HEATER:OFF"
-    
+
     if (command.startsWith("FAN1:")) {
       int fanSpeed = command.substring(5).toInt();
       fanSpeed = constrain(fanSpeed, 0, 100);
