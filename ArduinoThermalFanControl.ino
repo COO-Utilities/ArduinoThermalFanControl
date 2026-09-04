@@ -8,8 +8,8 @@
 
 #define FAN1_PIN 10
 #define FAN2_PIN 11
-#define RELAY_HEATER_PIN1 6
-#define RELAY_HEATER_PIN2 7
+#define RELAY_HEATER_MOTOR_PIN 6
+#define RELAY_HEATER_REJECT_PIN 7
 #define RELAY_FAN1_PIN 4
 #define RELAY_FAN2_PIN 5
 #define RELAY_STARTUP_COMPUTER 3
@@ -29,7 +29,8 @@ unsigned long lastStartupCheckTime = 0;
 // Tracked relay/output states, since the PWM and relay drivers can't be read back
 int fan1Speed = 0;
 int fan2Speed = 0;
-bool heaterOn = false;
+bool motorHeaterOn = false;
+bool rejectHeaterOn = false;
 bool startupRelayOn = false;
 // Set by SHUTDOWN; blocks the relay until temp drops below then rises above STARTUP_TEMP again
 bool startupShutdownLatched = false;
@@ -92,8 +93,10 @@ void printStatus() {
   Serial.print(getPT1000Temperature());
   Serial.print(",Resistance=");
   Serial.print(resistance);
-  Serial.print(",HEATER=");
-  Serial.print(heaterOn ? "ON" : "OFF");
+  Serial.print(",MOTORHEATER=");
+  Serial.print(motorHeaterOn ? "ON" : "OFF");
+  Serial.print(",REJECTHEATER=");
+  Serial.print(rejectHeaterOn ? "ON" : "OFF");
   Serial.print(",FAN1_PWM=");
   Serial.print(fan1Speed);
   Serial.print(",FAN2_PWM=");
@@ -109,13 +112,13 @@ void setup() {
   Serial.begin(9600);
   fan1Pwm.begin(25000.0f, 0.0f);
   fan2Pwm.begin(25000.0f, 0.0f);
-  pinMode(RELAY_HEATER_PIN1, OUTPUT);
-  pinMode(RELAY_HEATER_PIN2, OUTPUT);
+  pinMode(RELAY_HEATER_MOTOR_PIN, OUTPUT);
+  pinMode(RELAY_HEATER_REJECT_PIN, OUTPUT);
   pinMode(RELAY_FAN1_PIN, OUTPUT);
   pinMode(RELAY_FAN2_PIN, OUTPUT);
   pinMode(RELAY_STARTUP_COMPUTER, OUTPUT);
-  digitalWrite(RELAY_HEATER_PIN1, LOW);
-  digitalWrite(RELAY_HEATER_PIN2, LOW);
+  digitalWrite(RELAY_HEATER_MOTOR_PIN, LOW);
+  digitalWrite(RELAY_HEATER_REJECT_PIN, LOW);
   digitalWrite(RELAY_FAN1_PIN, LOW);
   digitalWrite(RELAY_FAN2_PIN, LOW);
   digitalWrite(RELAY_STARTUP_COMPUTER, LOW);
@@ -130,8 +133,8 @@ void loop() {
     if (!startupShutdownLatched){
       fan1Pwm.pulse_perc(0);
       fan2Pwm.pulse_perc(0);
-      digitalWrite(RELAY_HEATER_PIN1, LOW);
-      digitalWrite(RELAY_HEATER_PIN2, LOW);
+      digitalWrite(RELAY_HEATER_MOTOR_PIN, LOW);
+      digitalWrite(RELAY_HEATER_REJECT_PIN, LOW);
       digitalWrite(RELAY_FAN1_PIN, LOW);
       digitalWrite(RELAY_FAN2_PIN, LOW);
       Serial.println("WATCHDOG TIMEOUT - Soft reboot");
@@ -150,8 +153,8 @@ void loop() {
     command.trim();
     lastCommandTime = millis();  // Kick the watchdog
 
-    // Parse command format: "FAN:value" or "HEATER:state"
-    // Example: "FAN:75" sets fan to 75%, "HEATER:ON" or "HEATER:OFF"
+    // Parse command format: "FAN:value" or "MOTORHEATER:state"/"REJECTHEATER:state"
+    // Example: "FAN:75" sets fan to 75%, "MOTORHEATER:ON" or "REJECTHEATER:OFF"
 
     if (command.startsWith("FAN1:")) {
       int fanSpeed = command.substring(5).toInt();
@@ -181,19 +184,30 @@ void loop() {
       Serial.print(fanSpeed);
       Serial.println("%");
     }
-    else if (command.startsWith("HEATER:")) {
-      String heaterState = command.substring(7);
+    else if (command.startsWith("MOTORHEATER:")) {
+      String heaterState = command.substring(12);
       if (heaterState == "ON") {
-        heaterOn = true;
-        digitalWrite(RELAY_HEATER_PIN1, HIGH);
-        digitalWrite(RELAY_HEATER_PIN2, HIGH);
-        Serial.println("HEATER ON");
+        motorHeaterOn = true;
+        digitalWrite(RELAY_HEATER_MOTOR_PIN, HIGH);
+        Serial.println("MOTORHEATER ON");
       }
       else if (heaterState == "OFF") {
-        heaterOn = false;
-        digitalWrite(RELAY_HEATER_PIN1, LOW);
-        digitalWrite(RELAY_HEATER_PIN2, LOW);
-        Serial.println("HEATER OFF");
+        motorHeaterOn = false;
+        digitalWrite(RELAY_HEATER_MOTOR_PIN, LOW);
+        Serial.println("MOTORHEATER OFF");
+      }
+    }
+    else if (command.startsWith("REJECTHEATER:")) {
+      String heaterState = command.substring(13);
+      if (heaterState == "ON") {
+        rejectHeaterOn = true;
+        digitalWrite(RELAY_HEATER_REJECT_PIN, HIGH);
+        Serial.println("REJECTHEATER ON");
+      }
+      else if (heaterState == "OFF") {
+        rejectHeaterOn = false;
+        digitalWrite(RELAY_HEATER_REJECT_PIN, LOW);
+        Serial.println("REJECTHEATER OFF");
       }
     }
     else if (command == "SHUTDOWN") {

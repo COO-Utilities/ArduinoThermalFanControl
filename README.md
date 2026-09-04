@@ -17,7 +17,7 @@ from arduino_thermal_fan_control import connect
 controller = connect(vid=0x2341, pid=0x0069)
 try:
     controller.set_fan_speed(75)
-    controller.set_heater(False)
+    controller.set_reject_heater(False)
 finally:
     controller.close()
 ```
@@ -29,5 +29,5 @@ from arduino_thermal_fan_control import ThermalFanController
 
 with ThermalFanController(port="/dev/ttyACM0") as controller:
     controller.set_fan_speed(50)
-    controller.set_heater(True)
+    controller.set_motor_heater(True)
 ```

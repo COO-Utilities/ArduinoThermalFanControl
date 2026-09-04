@@ -3,7 +3,8 @@
 The Arduino sketch speaks a simple line-based protocol over serial:
 
 * ``FAN:<0-100>`` sets the fan duty cycle as a percentage.
-* ``HEATER:ON`` and ``HEATER:OFF`` control the heater relay.
+* ``MOTORHEATER:ON`` and ``MOTORHEATER:OFF`` control the motor heater relay.
+* ``REJECTHEATER:ON`` and ``REJECTHEATER:OFF`` control the reject heater relay.
 * ``STATUS`` reports the current temperature and relay/fan states.
 * ``SHUTDOWN`` disables the startup relay until the temperature drops below
   then rises above ``STARTUP_TEMP`` again.
@@ -195,11 +196,19 @@ class ThermalFanController:
 
 		return self.set_fan_speed(fan_number, 0, read_response=read_response)
 
-	def set_heater(self, on: bool, read_response: bool = True) -> str:
-		"""Turn the heater relay on or off."""
+	def set_motor_heater(self, on: bool, read_response: bool = True) -> str:
+		"""Turn the motor heater relay on or off."""
 
 		return self.send_command(
-			f"HEATER:{'ON' if on else 'OFF'}",
+			f"MOTORHEATER:{'ON' if on else 'OFF'}",
+			read_response=read_response,
+		)
+
+	def set_reject_heater(self, on: bool, read_response: bool = True) -> str:
+		"""Turn the reject heater relay on or off."""
+
+		return self.send_command(
+			f"REJECTHEATER:{'ON' if on else 'OFF'}",
 			read_response=read_response,
 		)
 
@@ -212,7 +221,7 @@ class ThermalFanController:
 		"""Query the current PT1000 temperature and relay/fan states.
 
 		Sends the ``STATUS`` command and parses the Arduino's
-		``STATUS:TEMP=...,HEATER=...,FAN1_PWM=...,FAN2_PWM=...,STARTUP_RELAY=...``
+		``STATUS:TEMP=...,MOTORHEATER=...,REJECTHEATER=...,FAN1_PWM=...,FAN2_PWM=...,STARTUP_RELAY=...``
 		reply into a dictionary.
 		"""
 
@@ -228,8 +237,10 @@ class ThermalFanController:
 		# 	key, _, value = field.partition("=")
 		# 	if key == "TEMP":
 		# 		status["temperature_k"] = float(value)
-		# 	elif key == "HEATER":
-		# 		status["heater_on"] = value == "ON"
+		# 	elif key == "MOTORHEATER":
+		# 		status["motor_heater_on"] = value == "ON"
+		# 	elif key == "REJECTHEATER":
+		# 		status["reject_heater_on"] = value == "ON"
 		# 	elif key == "FAN1_PWM":
 		# 		status["fan1_percent"] = int(value)
 		# 	elif key == "FAN2_PWM":
